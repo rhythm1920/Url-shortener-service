@@ -45,27 +45,34 @@ app.post("/api/shorturl/new", (req, res) => {
   Url.create(
     {
       url: req.body.url,
-      //constructing the short url(ex. http://localhost:3000/)
-      shortUrl:
-        req.protocol + // http
-        "://" +
-        req.hostname + // localhost
-        ":" +
-        port + // 3000
-        "/" +
-        mongo.ObjectId(), // _id
+      shortUrl: "/" + mongo.ObjectID().toString().split("").slice(18).join(""), // last six characters of _id
     },
-    (err) => {
+    (err, data) => {
       if (err) return console.log(err);
+      linkArr.push(data.shortUrl);
+      res.json({
+        original_url: data.url,
+        short_url:
+          //constructing the short url(ex. http://localhost:3000/)
+          req.protocol + // http
+          "://" +
+          req.hostname + // localhost
+          ":" +
+          port + // 3000
+          data.shortUrl, // last six characters of _id
+      });
     }
   );
-  Url.findOne({ url: req.body.url }, (err, data) => {
-    if (err) return console.log(err);
-    linkArr.push(data.shortUrl);
-    res.json({
-      original_url: data.url,
-      short_url: data.shortUrl,
-    });
+});
+//get endpoint for shortened urls
+app.get(linkArr, (req, res) => {
+  linkArr.map((url) => {
+    if (req.originalUrl === url) {
+      Url.findOne({ shortUrl: url }, (err, data) => {
+        if (err) return console.error(err);
+        res.redirect(data.url);
+      });
+    }
   });
 });
 
