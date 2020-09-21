@@ -4,9 +4,11 @@ var express = require("express");
 var mongo = require("mongodb");
 var mongoose = require("mongoose");
 var dotenv = require("dotenv");
+var dns = require("dns");
 var cors = require("cors");
 let Schema = mongoose.Schema;
 const bodyParser = require("body-parser");
+const { URL } = require("url");
 
 var app = express();
 dotenv.config();
@@ -24,6 +26,7 @@ mongoose.connect(
 let urlSchema = new Schema({
   url: { type: String, required: true },
   shortUrl: String,
+  searchUrl: String,
 });
 
 const Url = mongoose.model("Url", urlSchema);
@@ -37,47 +40,63 @@ app.use("/public", express.static(process.cwd() + "/public"));
 Url.find({}, (err, data) => {
   if (err) return console.error(err);
   data.map((ele) => {
-    linkArr.push(ele["shortUrl"]);
+    console.log(linkArr);
+    linkArr.push(ele["searchUrl"]);
   });
 });
-//post request
-app.post("/api/shorturl/new", (req, res) => {
-  Url.create(
-    {
-      url: req.body.url,
-      shortUrl: "/" + mongo.ObjectID().toString().split("").slice(18).join(""), // last six characters of _id
-    },
-    (err, data) => {
-      if (err) return console.log(err);
-      linkArr.push(data.shortUrl);
-      res.json({
-        original_url: data.url,
-        short_url:
-          //constructing the short url(ex. http://localhost:3000/)
-          req.protocol + // http
-          "://" +
-          req.hostname + // localhost
-          ":" +
-          port + // 3000
-          data.shortUrl, // last six characters of _id
-      });
-    }
-  );
-});
-//get endpoint for shortened urls
-app.get(linkArr, (req, res) => {
-  linkArr.map((url) => {
-    if (req.originalUrl === url) {
-      Url.findOne({ shortUrl: url }, (err, data) => {
-        if (err) return console.error(err);
-        res.redirect(data.url);
-      });
-    }
-  });
-});
-
 app.get("/", function (req, res) {
   res.sendFile(process.cwd() + "/views/index.html");
+});
+//post request
+app.post("/api/shorturl/new", (req, res, next) => {
+  let inputUrl = new URL(req.body.url);
+  dns.lookup(inputUrl.host, (err) => {
+    if (err) {
+      res.json({ error: "invalid URL" });
+      return;
+    } else {
+      Url.create(
+        {
+          url: req.body.url,
+          shortUrl: mongo.ObjectID().toString().split("").slice(18).join(""), // last six characters of _id
+          searchUrl:
+            "/api/shorturl/" +
+            mongo.ObjectID().toString().split("").slice(18).join(""),
+        },
+        (err, data) => {
+          if (err) {
+            res.sendStatus(500);
+            return console.log(err);
+          }
+          linkArr.push(data.searchUrl);
+          res.json({
+            original_url: data.url,
+            short_url: data.shortUrl, // last six characters of _id
+          });
+          return;
+        }
+      );
+    }
+  });
+});
+//get endpoint for shortened urls
+app.get(linkArr, (req, res, next) => {
+  for (let i = 0; i < linkArr.length; i++) {
+    if (req.originalUrl === linkArr[i]) {
+      console.log(linkArr[i] + " " + req.originalUrl);
+      Url.findOne({ searchUrl: linkArr[i] }, (err, data) => {
+        if (err) {
+          res.sendStatus(500);
+          return console.error(err);
+        } else {
+          console.log("you should be redirected now");
+          return res.redirect(data.url);
+        }
+      });
+    } else {
+      next();
+    }
+  }
 });
 
 app.listen(port, function () {
