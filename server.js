@@ -15,14 +15,14 @@ dotenv.config();
 let linkArr = [];
 // Basic Configuration
 var port = process.env.PORT || 3000;
-
+//Connecting to MongoDB
 mongoose.connect(
   process.env.DB_URL,
   { useNewUrlParser: true, useUnifiedTopology: true },
   () => console.log("Connected to MongoDB")
 );
 
-//create url model
+//Create Schema for Url model
 let urlSchema = new Schema({
   url: { type: String, required: true },
   shortUrl: String,
@@ -39,18 +39,18 @@ app.use("/public", express.static(process.cwd() + "/public"));
 //Updating the list of shortened-urls
 Url.find({}, (err, data) => {
   if (err) return console.error(err);
-  data.map((ele) => {
-    console.log(linkArr);
-    linkArr.push(ele["searchUrl"]);
-  });
+  for (let i = 0; i < data.length; i++) {
+    linkArr.push(data[i]["searchUrl"]);
+  }
 });
 app.get("/", function (req, res) {
-  res.sendFile(process.cwd() + "/views/index.html");
+  return res.sendFile(process.cwd() + "/views/index.html");
 });
 //post request
 app.post("/api/shorturl/new", (req, res, next) => {
   let inputUrl = new URL(req.body.url);
   dns.lookup(inputUrl.host, (err) => {
+    // validation of url
     if (err) {
       res.json({ error: "invalid URL" });
       return;
@@ -66,9 +66,9 @@ app.post("/api/shorturl/new", (req, res, next) => {
         (err, data) => {
           if (err) {
             res.sendStatus(500);
-            return console.log(err);
+            return console.error(err);
           }
-          linkArr.push(data.searchUrl);
+          linkArr.push(data.searchUrl); //push shortened url to array
           res.json({
             original_url: data.url,
             short_url: data.shortUrl, // last six characters of _id
@@ -81,22 +81,16 @@ app.post("/api/shorturl/new", (req, res, next) => {
 });
 //get endpoint for shortened urls
 app.get(linkArr, (req, res, next) => {
-  for (let i = 0; i < linkArr.length; i++) {
-    if (req.originalUrl === linkArr[i]) {
-      console.log(linkArr[i] + " " + req.originalUrl);
-      Url.findOne({ searchUrl: linkArr[i] }, (err, data) => {
-        if (err) {
-          res.sendStatus(500);
-          return console.error(err);
-        } else {
-          console.log("you should be redirected now");
-          return res.redirect(data.url);
-        }
-      });
+  Url.findOne({ searchUrl: req.originalUrl }, (err, data) => {
+    if (err) {
+      res.sendStatus(500);
+      return console.error(err);
+    } else if (data === null) {
+      next(); // if no url is found then move on to next operation
     } else {
-      next();
+      res.redirect(data.url); //redirection from shortened url
     }
-  }
+  });
 });
 
 app.listen(port, function () {
